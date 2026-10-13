@@ -99,9 +99,14 @@ export function parse(artifact) {
   if (messages.length) {
     session.title = messages[0].text.replace(/\s+/g, ' ').trim().slice(0, 60) || null;
   }
-  // 时间戳整个源都没有，留 null；界面会显示「无时间戳」而不是伪造一个。
+  /*
+   * 源不记录任何消息时间戳，所以 startedAt 只能留 null —— 不知道该从何时算起。
+   * 但 state.vscdb 的 mtime 是一个**真实存在**的事实：它给出「这个工作区最后一次被写入」
+   * 的时间。用它兜底 lastEventAt 好过全 null —— 全 null 会让界面上的「最近活动」退化成
+   * 任意顺序，看不出哪个工作区最近在动。它是上界而非精确提问时间，故只用于 lastEventAt。
+   */
   session.startedAt = null;
-  session.lastEventAt = null;
+  session.lastEventAt = mtimeMs(artifact.path);
 
   return { session, messages };
 }
@@ -170,6 +175,11 @@ function readInputHistory(dbPath) {
   } finally {
     db.close();
   }
+}
+
+/** 文件 mtime（epoch ms）；读不到就返回 null，不用 0 冒充。 */
+function mtimeMs(p) {
+  try { return Math.floor(statSync(p).mtimeMs); } catch { return null; }
 }
 
 function safeDirs(dir) {

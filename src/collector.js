@@ -81,7 +81,14 @@ function ingestPass(store, adapter, artifacts, { force, summary, result, bucket,
        * 例外：metadata-only 的源（Codex）本来就没有正文，不能按消息数判空。
        */
       if (!messages.length && session.contentScope !== ContentScope.MetadataOnly) {
+        /*
+         * 空会话是噪声，不该出现在看板上 —— 但也不能每轮都把它重新解压一遍
+         * （DSH 的 zstd 文件尤其贵）。删掉会话行之后，把它「已处理过」的指纹留下：
+         * 下一轮 getArtifact 命中指纹，直接跳过。文件一旦真有内容，指纹就变了，
+         * 会正常重采 —— 不影响正确性。
+         */
         store.transaction(() => store.deleteSession(session.id));
+        store.saveArtifact(artifact.path, adapter.SOURCE, null, fp.bytes, fp.mtime);
         summary.filesEmpty += 1;
         continue;
       }
