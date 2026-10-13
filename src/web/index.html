@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Observatory · Agent 监控台</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <h1>Agent Observatory</h1>
+  </div>
+  <div class="topbar-actions">
+    <div class="search-wrap">
+      <input id="search" type="search" placeholder="搜索会话内容…" autocomplete="off" aria-label="搜索会话内容">
+      <div class="search-results" id="searchResults" hidden></div>
+    </div>
+    <button id="refresh" class="btn" type="button">刷新进程</button>
+    <button id="theme" class="btn btn-icon" type="button" title="切换主题" aria-label="切换主题">◐</button>
+  </div>
+</header>
+
+<main id="main"></main>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "agent-observatory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "多源 AI Agent 观测平台：把本机各 Agent 的会话统一索引成可查询的观测层",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "bin": {
+    "agent-observatory": "./src/cli.js"
+  },
+  "scripts": {
+    "collect": "node src/cli.js collect",
+    "serve": "node src/cli.js serve",
+    "stats": "node src/cli.js stats",
+    "sources": "node src/cli.js sources",
+    "test": "node --test"
+  }
+}
