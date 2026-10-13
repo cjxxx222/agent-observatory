@@ -204,6 +204,28 @@ test('B1 兜底：丢失的派生边能从 sessions.parent_session_id 恢复，�
   }
 });
 
+test('N5：单轮通知有硬上限，超出的折叠成一条汇总', () => {
+  const { calls, watcher } = makeWatcher({ maxPerRound: 3 });
+  const rows = Array.from({ length: 10 }, (_, i) => ({
+    id: `s${i}`, source: 'dsh', title: `T${i}`, lastAt: T0, parentSessionId: null,
+  }));
+  watcher.observe(fakeStore(rows), T0);
+  watcher.observe(fakeStore(rows), T0 + MIN);
+
+  assert.equal(calls.length, 4, '3 条明细 + 1 条汇总，不能一次 spawn 十个 PowerShell');
+  assert.match(calls[3].title, /更多会话完成/);
+  assert.match(calls[3].body, /另有 7 个会话/, '被折叠的数量要如实报出来');
+});
+
+test('N6：XML 非法控制字符被剔除（否则 LoadXml 静默失败）', () => {
+  const xml = toastXml('标题\u0001带\u0007控制符', '正文\u0000\u001F', 'http://127.0.0.1:7788');
+  assert.ok(
+    !/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(xml),
+    'XML 1.0 不允许的控制字符必须被剔除，否则整条通知会静默丢失',
+  );
+  assert.match(xml, /标题带控制符/);
+});
+
 test('toast XML：可点击跳转、带提示音、特殊字符被转义', () => {
   const xml = toastXml('完成 <&>"', 'dsh · a & b', 'http://127.0.0.1:8123');
   assert.match(xml, /activationType="protocol"/);
