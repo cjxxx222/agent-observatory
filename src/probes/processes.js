@@ -50,7 +50,7 @@ export const AGENT_CATALOG = [
     electron: false,
     glyph: 'hexagon',
     accent: '#4A5568',
-    note: '本机 config.toml 设了 disable_response_storage = true，Codex 自己没有落盘任何会话',
+    note: '本机会话曾落盘，但被 Codex++ 删除并备份到 ~/.codex-session-delete；state_5.sqlite 的 threads 因此为空',
   },
   {
     id: 'dsh',
