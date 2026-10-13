@@ -93,8 +93,10 @@ switch (command) {
   case 'serve': {
     const port = Number(flags.port ?? 7788);
     const interval = flags.interval === undefined ? 5000 : Number(flags.interval);
+    const notify = flags.notify !== '0';
     const server = createApiServer(store, {
       collectIntervalMs: interval,
+      notify,
       log: (...m) => console.log('[server]', ...m),
     });
     server.runCollect({ source: flags.source });
@@ -103,6 +105,7 @@ switch (command) {
       console.log(`查询服务已启动: http://127.0.0.1:${port}`);
       console.log(`  索引库: ${dbPath}`);
       console.log(`  自动采集间隔: ${interval}ms（--interval 0 关闭）`);
+      console.log(`  任务完成提醒: ${notify ? '开（--notify 0 关闭）' : '关'}`);
       console.log('  Ctrl+C 停止');
     });
     const shutdown = () => {
@@ -167,6 +170,7 @@ function printHelp() {
   --kind <main|subagent|workflow>
   --port <n>         serve 端口（默认 7788）
   --interval <ms>    自动采集间隔（默认 5000，0 关闭）
+  --notify <0|1>     Agent 完成任务的桌面提醒（默认开，传 0 关闭）
 
 示例:
   node src/cli.js collect

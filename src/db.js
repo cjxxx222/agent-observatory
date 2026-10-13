@@ -366,6 +366,19 @@ class Store {
     return row?.session_id ?? null;
   }
 
+  /**
+   * 供「任务完成提醒」使用：能看到正文、且有时间戳的会话，连同它的最后活动时间。
+   * 只要 content_scope = 'full' 的 —— 只有这类会话拿得到 Agent 的产出正文，
+   * 对 user-prompts / metadata-only 报「完成」是在编。
+   */
+  listCompletionCandidates() {
+    return this.db
+      .prepare(`SELECT id, source, title, last_event_at AS lastAt
+                FROM sessions
+                WHERE content_scope = 'full' AND last_event_at IS NOT NULL`)
+      .all();
+  }
+
   stats() {
     const one = (sql, ...p) => this.db.prepare(sql).get(...p);
     return {

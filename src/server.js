@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, normalize, extname, sep } from 'node:path';
 import { collect } from './collector.js';
 import { listSources } from './adapters/index.js';
+import { createCompletionWatcher } from './notify.js';
 import { listProcesses, summarizeAgents } from './probes/processes.js';
 
 const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), 'web');
@@ -37,9 +38,10 @@ function serveStatic(pathname, res) {
   return true;
 }
 
-export function createApiServer(store, { collectIntervalMs = 5000, log = () => {} } = {}) {
+export function createApiServer(store, { collectIntervalMs = 5000, notify = true, log = () => {} } = {}) {
   const sseClients = new Set();
   let timer = null;
+  const watcher = notify ? createCompletionWatcher({ log }) : null;
 
   const broadcast = (evt) => {
     const payload = `event: ${evt.type}\ndata: ${JSON.stringify(evt)}\n\n`;
@@ -51,6 +53,8 @@ export function createApiServer(store, { collectIntervalMs = 5000, log = () => {
   const runCollect = (opts = {}) => {
     const summary = collect(store, { ...opts, onEvent: broadcast });
     broadcast({ type: 'collect_done', summary });
+    // 每轮采集后顺带看一眼「谁安静下来了」—— 手工触发也走这里，口径一致。
+    try { watcher?.observe(store); } catch (err) { log('完成提醒判定失败', err.message); }
     return summary;
   };
 
