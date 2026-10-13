@@ -25,13 +25,21 @@ const TOAST_APP_ID = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\
 const SOURCE_LABELS = new Map(listSources().map((s) => [s.source, s.label]));
 
 /**
- * 静默判定 + 提醒去重。
+ * 静默判定 + 提醒去重 + 同父归组。
  * 状态只活在内存里 —— 它描述的是「本进程运行期间观察到的变化」，重启后重新建立基线。
+ *
+ * @param {object}   [opts]
+ * @param {number}   [opts.quietMs]   多久没新事件算这轮结束，默认 90s
+ * @param {string}   [opts.url]       通知点击后打开的地址（由调用方按真实监听端口传入）
+ * @param {function} [opts.notifier]  实际弹通知的函数，注入以便测试
+ * @param {number}   [opts.startedAt] 开始观察的时刻，默认构造时；用于 N2 的「回填」判定
+ * @param {function} [opts.log]
  */
 export function createCompletionWatcher({
   quietMs = DEFAULT_QUIET_MS,
   url = DEFAULT_URL,
   notifier = notifyDesktop,
+  startedAt = Date.now(),
   log = () => {},
 } = {}) {
   const lastSeen = new Map(); // sessionId -> 上一轮看到的 lastEventAt
@@ -39,7 +47,7 @@ export function createCompletionWatcher({
 
   return {
     /**
-     * 每轮采集后调用一次。返回本轮真正提醒出去的会话。
+     * 每轮采集后调用一次。返回本轮真正发出去的提醒（已按父会话归组）。
      * @param {object} store 索引库
      * @param {number} [now] 注入时间，便于测试
      */
@@ -51,8 +59,20 @@ export function createCompletionWatcher({
           // 头一次见到：此刻已经安静的（含服务启动前就存在的老会话）不补报，
           // 否则一开服务就刷一屏。正在活动的会留在「未提醒」状态，等它安静下来再报。
           if (now - s.lastAt >= quietMs) notified.add(s.id);
-        } else if (s.lastAt > prev) {
-          notified.delete(s.id); // 又冒了新事件 → 新一轮开始，重新武装
+        } else if (s.lastAt > prev && s.lastAt >= startedAt) {
+          /*
+           * 又有新事件 → 新一轮开始，重新武装。
+           *
+           * 第二个条件是 N2 的关键：lastEventAt 变大**不一定**等于「刚刚又干活了」。
+           * 重新解析一个老会话时，可能补出一条时间戳比上一轮更晚、但仍然很旧的消息
+           * （回填 / 时间戳被改写）。若不设防，这种「变新了」会让一个几小时前就结束的
+           * 会话立刻满足「已安静 ≥ 阈值」而被补报。
+           * 这里要求新时间戳不早于开始观察的时刻，也就是「这确实是本进程运行期间发生的事」。
+           *
+           * 代价（明确说明，不假装精确）：服务未运行的窗口里真实发生的完成，会被一并
+           * 压掉、不再补报。我们宁愿漏报，也不要用一个陈旧会话去打扰用户。
+           */
+          notified.delete(s.id);
         }
         lastSeen.set(s.id, s.lastAt);
 
@@ -62,13 +82,32 @@ export function createCompletionWatcher({
         }
       }
 
+      /*
+       * 按父会话归组：一个父下面几十个子代理差不多同时安静下来（它们的时间戳彼此很近，
+       * 会在同一轮跨过阈值），逐条弹就是通知轰炸。同父的合并成一条，
+       * 正文写明「派生了 N 个子代理」。没有父的会话各自成组。
+       *
+       * 边界（诚实说明）：归组只在**同一轮 observe** 内生效。子代理若分几轮才陆续安静，
+       * 每轮仍会各发一条 —— 归组是「同一批」而不是「同一个父的永远合并」。
+       */
+      const groups = new Map();
       for (const s of fired) {
-        const source = SOURCE_LABELS.get(s.source) ?? s.source;
-        const title = s.title ? `· ${s.title}` : '';
-        log(`任务提醒：${source} ${title}`.trim());
-        notifier({ title: 'Agent 完成了一轮任务', body: `${source} ${title}`.trim(), url });
+        const key = s.parentSessionId ?? `#solo:${s.id}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(s);
       }
-      return fired;
+
+      const sent = [];
+      for (const members of groups.values()) {
+        const source = SOURCE_LABELS.get(members[0].source) ?? members[0].source;
+        const payload = members.length > 1
+          ? { title: '一批子代理完成', body: `${source} · 派生了 ${members.length} 个子代理` }
+          : { title: 'Agent 完成了一轮任务', body: `${source}${members[0].title ? ` · ${members[0].title}` : ''}` };
+        log(`任务提醒：${payload.title} — ${payload.body}`);
+        notifier({ ...payload, url });
+        sent.push({ ...payload, url, sessionIds: members.map((m) => m.id) });
+      }
+      return sent;
     },
   };
 }

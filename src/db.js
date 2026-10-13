@@ -367,16 +367,48 @@ class Store {
   }
 
   /**
-   * 供「任务完成提醒」使用：能看到正文、且有时间戳的会话，连同它的最后活动时间。
+   * 供「任务完成提醒」使用：能看到正文、且有时间戳的会话，连同它的最后活动时间与父会话。
    * 只要 content_scope = 'full' 的 —— 只有这类会话拿得到 Agent 的产出正文，
    * 对 user-prompts / metadata-only 报「完成」是在编。
+   * 带上 parent_session_id 是为了让提醒能按父会话归组：一个父下面几十个子代理
+   * 差不多同时安静下来，逐条弹通知会瞬间刷屏。
    */
   listCompletionCandidates() {
     return this.db
-      .prepare(`SELECT id, source, title, last_event_at AS lastAt
+      .prepare(`SELECT id, source, title, parent_session_id AS parentSessionId,
+                       last_event_at AS lastAt
                 FROM sessions
                 WHERE content_scope = 'full' AND last_event_at IS NOT NULL`)
       .all();
+  }
+
+  /**
+   * 兜底修复：把「会话知道自己的父、但 agent_edges 里没有这条边」的关系补回来。
+   *
+   * 为什么需要它：边是由**子**会话产出的，而重采父会话时子会话这一轮往往指纹未变、
+   * 直接跳过 —— 万一那条边此前丢过（旧版本 bug、手工改动），跳过的子会话就永远没机会
+   * 再写一次，这条关系等于「无法恢复」。sessions.parent_session_id 是同一份确定性指针
+   * 的副本，从它补边不引入任何猜测。
+   *
+   * 诚实说明：link_method 标成 'recovered_from_session'，明说这条边是从索引库里的
+   * 父指针补回来的，而不是这一轮从原始文件读到的 —— 不假装精度。
+   * 父会话不存在的悬空指针不补（避免关系图上出现指向空气的箭头）。
+   *
+   * @returns {number} 本次补回的边数
+   */
+  recoverMissingEdges() {
+    const info = this.db
+      .prepare(`INSERT OR IGNORE INTO agent_edges
+                  (id, parent_session_id, child_session_id, link_method, created_at)
+                SELECT s.id || '#spawn', s.parent_session_id, s.id, 'recovered_from_session', ?
+                FROM sessions s
+                WHERE s.parent_session_id IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM sessions p WHERE p.id = s.parent_session_id)
+                  AND NOT EXISTS (SELECT 1 FROM agent_edges e
+                                  WHERE e.child_session_id = s.id
+                                    AND e.parent_session_id = s.parent_session_id)`)
+      .run(Date.now());
+    return info.changes;
   }
 
   stats() {

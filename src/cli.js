@@ -97,6 +97,7 @@ switch (command) {
     const server = createApiServer(store, {
       collectIntervalMs: interval,
       notify,
+      port,
       log: (...m) => console.log('[server]', ...m),
     });
     server.runCollect({ source: flags.source });

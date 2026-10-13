@@ -38,10 +38,22 @@ function serveStatic(pathname, res) {
   return true;
 }
 
-export function createApiServer(store, { collectIntervalMs = 5000, notify = true, log = () => {} } = {}) {
+export function createApiServer(store, {
+  collectIntervalMs = 5000,
+  notify = true,
+  port = 7788,
+  notifier,
+  log = () => {},
+} = {}) {
   const sseClients = new Set();
   let timer = null;
-  const watcher = notify ? createCompletionWatcher({ log }) : null;
+  /*
+   * 提醒里的跳转地址必须跟着真实监听端口走 —— 写死 7788 的话，
+   * 换端口启动后点通知会打开一个空的服务。
+   */
+  const watcher = notify
+    ? createCompletionWatcher({ url: `http://127.0.0.1:${port}`, notifier, log })
+    : null;
 
   const broadcast = (evt) => {
     const payload = `event: ${evt.type}\ndata: ${JSON.stringify(evt)}\n\n`;
@@ -158,6 +170,8 @@ export function createApiServer(store, { collectIntervalMs = 5000, notify = true
   };
 
   server.runCollect = runCollect;
+  // 暴露出来供测试直接驱动判定，不必真的跑一轮全量采集。
+  server.watcher = watcher;
   return server;
 }
 

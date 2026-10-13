@@ -58,6 +58,22 @@ export function collect(store, { source, force = false, onEvent = () => {} } = {
     onEvent({ type: 'source_done', ...result });
   }
 
+  /*
+   * 收尾兜底：把所有「会话知道自己的父、但 agent_edges 里没有这条边」的关系补回来。
+   *
+   * 为什么放在全部源都采完之后、而不是每个源各自收尾：父会话也讲不通 ——
+   * Codex / Claude Code 的边由**子**会话产出，而重采父会话时子会话这一轮往往指纹未变、
+   * 直接跳过，于是那些边不会被任何人重写。若它们此前丢过（旧版本 bug、手工改动），
+   * 就永久缺失。sessions.parent_session_id 是同一份确定性指针的副本，从它补边不引入猜测。
+   * 只在真正补出边时记账，平时这几条 SQL 的结果是 0，成本可以忽略。
+   */
+  try {
+    const recovered = store.recoverMissingEdges();
+    if (recovered > 0) summary.edgesRecovered = recovered;
+  } catch (err) {
+    summary.errors.push({ stage: 'recover_edges', message: err.message });
+  }
+
   return summary;
 }
 
